@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio + Subtitles (hls.js)</title>
+</head>
+<body>
+<h1>Demo</h1>
+<audio id="audioPlayer" controls></audio>
+
+<div id="subtitles" style="margin-top:20px; font-size:24px; font-weight:bold; color:black;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+    (async function() {
+        const audio = document.getElementById('audioPlayer');
+        const subtitlesDiv = document.getElementById('subtitles');
+        const hlsPlaylistUrl = '/hls/playlist.m3u8';
+        const subtitlesUrl = '/hls/subtitles.vtt';
+        let cues = [];
+
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(hlsPlaylistUrl);
+            hls.attachMedia(audio);
+            audio.play();
+        } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+            audio.src = hlsPlaylistUrl;
+            audio.play();
+        } else {
+            console.warn('This browser does not support HLS.');
+        }
+
+        async function fetchSubtitles() {
+            try {
+                const response = await fetch(subtitlesUrl);
+                const text = await response.text();
+                parseSubtitles(text);
+            } catch (error) {
+                console.error('Error loading subtitles:', error);
+            }
+        }
+
+        function parseSubtitles(text) {
+            const lines = text.split('\n\n');
+            cues = [];
+
+            lines.forEach(line => {
+                const parts = line.split('\n');
+                if (parts.length >= 2) {
+                    const time = parts[0].includes('-->') ? parts[0] : parts[1];
+                    const [start, end] = time.split(' --> ');
+                    const subtitleText = parts.slice(parts[0].includes('-->') ? 1 : 2).join('<br>');
+                    cues.push({
+                        start: parseTime(start),
+                        end: parseTime(end),
+                        text: subtitleText
+                    });
+                }
+            });
+        }
+
+        function parseTime(timeString) {
+            const parts = timeString.split(':');
+            if (parts.length === 3) {
+                const [hours, minutes, seconds] = parts;
+                return (
+                    parseInt(hours) * 3600 +
+                    parseInt(minutes) * 60 +
+                    parseFloat(seconds.replace(',', '.'))
+                );
+            }
+            return 0;
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            const currentTime = audio.currentTime;
+            const activeCue = cues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
+            subtitlesDiv.innerHTML = activeCue ? activeCue.text : '';
+        });
+
+        fetchSubtitles();
+    })();
+</script>
+</body>
+</html>
